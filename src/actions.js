@@ -10,7 +10,7 @@ const tif = (f) => /\.tiff?$/i.test(f.name);
 
 export function setStatus(msg, kind = '') {
   const s = store.get();
-  store.set({ status: { msg, kind }, overlay: s.overlay.active ? { ...s.overlay, msg } : s.overlay });
+  store.set({ status: { msg, kind }, statusSeq: s.statusSeq + 1, overlay: s.overlay.active ? { ...s.overlay, msg } : s.overlay });
 }
 const setOverlay = (patch) => store.set((s) => ({ overlay: { ...s.overlay, ...patch } }));
 
@@ -95,6 +95,7 @@ export async function rescoreTile(stem) {
 
 export async function rescoreAll() {
   if (!datesOk()) return;
+  store.set({ appliedKey: JSON.stringify(allProfileWeights()) });
   // Tiles are independent (each call touches only its own stem), so they run concurrently.
   const stems = store.get().riskStems;
   const counts = await Promise.all(stems.map(rescoreTile));
@@ -200,6 +201,13 @@ export async function applyWeightVersion(index) {
   store.set({ profileWeights: merged, vegMode: merged[s.activeProfile]?.vegetation_mode || s.vegMode });
   if (s.riskStems.length && validDates()) await rescoreAll();
   setStatus(`Loaded weight version: ${v.name}`, 'ok');
+}
+
+export function resetProfileWeights() {
+  const s = store.get(), d = s.profileDefaults[s.activeProfile];
+  if (!d) return;
+  store.set({ profileWeights: { ...s.profileWeights, [s.activeProfile]: clone(d) }, vegMode: d.vegetation_mode || s.vegMode });
+  setStatus(`Settings for "${s.activeProfile === 'malaria' ? 'Malaria vector priority' : 'Any larvae'}" are back to the defaults. Press Apply to re-score.`, 'ok');
 }
 
 // ------------------------------------------------------------------ class legend
@@ -345,6 +353,7 @@ export async function run() {
   } catch (e) { clearInterval(poll); finish(); return setStatus(`Request failed: ${e}`, 'err'); }
 
   try { await showResults(data); } catch (e) { setStatus(String(e.message || e), 'err'); }
+  if (window.innerWidth <= 640) store.set((x) => ({ ui: { ...x.ui, barCollapsed: true } }));   // show the map on phones
   finish();
 }
 

@@ -1,10 +1,12 @@
 import React, { useMemo, useState } from 'react';
 import { store, useStore } from '../store';
-import { scoreOf, fmt, downloadBlob } from '../lib/scoring';
+import { scoreOf, fmt, downloadBlob, riskColor } from '../lib/scoring';
 import { controller } from '../mapController';
-import { openParcelPopup } from '../actions';
+import { openParcelPopup, setProfile } from '../actions';
+import Seg from './Seg.jsx';
+import { Button, Card, Input, Select, cx } from '../ui';
 
-const profileLabel = (k) => (k === 'malaria' ? 'Malaria vector priority' : 'Any larvae');
+const PROFILES = [['any_larvae', 'Any larvae'], ['malaria', 'Malaria vector']];
 
 function useRows() {
   const parcelData = useStore((s) => s.parcelData), profile = useStore((s) => s.activeProfile);
@@ -26,6 +28,9 @@ const zoomTo = (r) => {
   controller.flyTo(r.p.lat, r.p.lon);
   openParcelPopup(r.stem, r.p.id, [r.p.lat, r.p.lon]);
 };
+const H4 = ({ children }) => <h4 className="mb-2 mt-4 text-[13px] font-semibold uppercase tracking-wide text-muted">{children}</h4>;
+const Empty = ({ children }) => <div className="p-4 text-center text-sm text-muted">{children}</div>;
+const Pill = ({ score, thr }) => <span className="pill inline-grid h-8 min-w-[46px] place-items-center rounded-full font-mono text-[15px] font-semibold text-white" style={{ background: score == null ? 'var(--muted)' : riskColor(score, thr) }}>{score ?? '–'}</span>;
 
 function Overview({ rows, thr }) {
   const flagged = rows.filter((r) => r.flagged);
@@ -38,33 +43,35 @@ function Overview({ rows, thr }) {
   const hab = Object.entries(byHab).sort((a, b) => b[1] - a[1]).slice(0, 6), maxHab = Math.max(1, ...hab.map((h) => h[1]));
   return (
     <>
-      <div className="kpis">
-        <div className="kpi"><b>{fmt(rows.length)}</b><small>Parcels</small></div>
-        <div className="kpi"><b>{fmt(flagged.length)}</b><small>Flagged</small></div>
-        <div className="kpi"><b>{rows.length ? Math.round((100 * flagged.length) / rows.length) : 0}%</b><small>Share</small></div>
-        <div className="kpi"><b>{fmt(wet)}</b><small>Wet m²</small></div>
+      <div className="kpis my-3 grid grid-cols-2 gap-2.5">
+        <div className="rounded-md bg-wash px-3 py-2.5"><b className="block font-mono text-2xl leading-tight">{fmt(flagged.length)}</b><small className="text-[13px] font-semibold text-muted">flagged of {fmt(rows.length)} parcels</small></div>
+        <div className="rounded-md bg-wash px-3 py-2.5"><b className="block font-mono text-2xl leading-tight">{rows.length ? Math.round((100 * flagged.length) / rows.length) : 0}%</b><small className="text-[13px] font-semibold text-muted">of parcels flagged</small></div>
+        <div className="rounded-md bg-wash px-3 py-2.5"><b className="block font-mono text-2xl leading-tight">{fmt(wet)}</b><small className="text-[13px] font-semibold text-muted">m² wet area in flagged parcels</small></div>
+        <div className="rounded-md bg-wash px-3 py-2.5"><b className="block font-mono text-2xl leading-tight">{thr}</b><small className="text-[13px] font-semibold text-muted">points needed to flag</small></div>
       </div>
-      <h4>Score distribution</h4>
-      <div className="hist" aria-label="Score distribution">
-        {bins.map((n, i) => <i key={i} className={i * 10 + 10 <= thr ? 'below' : ''} style={{ height: `${Math.max(2, (100 * n) / maxBin)}%` }} title={`${i * 10}-${i * 10 + 10}: ${n} parcels`} />)}
+      <H4>How scores are spread</H4>
+      <div className="flex h-[60px] items-end gap-[3px]" role="img" aria-label="Number of parcels by score">
+        {bins.map((n, i) => <i key={i} className={cx('min-h-[3px] flex-1 rounded-t-[3px]', i * 10 + 10 <= thr ? 'bg-line' : 'bg-pine')} style={{ height: `${Math.max(5, (100 * n) / maxBin)}%` }} title={`${i * 10}-${i * 10 + 10}: ${n} parcels`} />)}
       </div>
-      <div className="hist-ax"><span>0</span><span>threshold {thr}</span><span>100</span></div>
-      <h4>Flagged by habitat</h4>
+      <div className="mt-1 flex justify-between font-mono text-xs text-muted"><span>0</span><span>flag from {thr}</span><span>100</span></div>
+      <H4>Flagged parcels by habitat</H4>
       {hab.length ? hab.map(([h, n]) => (
-        <div className="bar-row" key={h}><span>{h}</span><div className="track"><div className="fill" style={{ width: `${(100 * n) / maxHab}%` }} /></div><span>{n}</span></div>
-      )) : <div className="empty">No parcel reaches the threshold.</div>}
+        <div className="my-1.5 grid grid-cols-[minmax(80px,120px)_1fr_32px] items-center gap-2 text-sm" key={h}><span>{h}</span><div className="h-3 overflow-hidden rounded-[5px] bg-wash"><div className="h-full bg-amber" style={{ width: `${(100 * n) / maxHab}%` }} /></div><span className="text-right font-mono">{n}</span></div>
+      )) : <Empty>No parcel reaches the threshold.</Empty>}
     </>
   );
 }
 
-function ToCheck({ rows, profile }) {
-  const [q, setQ] = useState(''), [sort, setSort] = useState('score'), [min, setMin] = useState(0);
+function ToCheck({ rows, profile, thr }) {
+  const [q, setQ] = useState(''), [sort, setSort] = useState('score'), [min, setMin] = useState(0), [habs, setHabs] = useState([]);
   const prio = (r) => (typeof r.p.inspection_priority === 'number' ? r.p.inspection_priority : 99);
+  const habitats = useMemo(() => [...new Set(rows.filter((r) => r.flagged).map((r) => r.habitat))].sort(), [rows]);
   const out = useMemo(() => {
     const t = q.trim().toLowerCase();
     const by = { score: (a, b) => b.score - a.score, priority: (a, b) => prio(a) - prio(b) || b.score - a.score, wet: (a, b) => b.wet - a.wet, habitat: (a, b) => a.habitat.localeCompare(b.habitat) };
-    return rows.filter((r) => r.flagged && r.score >= min && (!t || [r.habitat, r.p.site_id, r.stem, r.p.id].join(' ').toLowerCase().includes(t))).sort(by[sort]);
-  }, [rows, q, sort, min]);
+    return rows.filter((r) => r.flagged && r.score >= min && (!habs.length || habs.includes(r.habitat)) &&
+      (!t || [r.habitat, r.p.site_id, r.stem, r.p.id].join(' ').toLowerCase().includes(t))).sort(by[sort]);
+  }, [rows, q, sort, min, habs]);
   const csv = () => {
     const head = ['tile', 'region_id', 'site_id', 'habitat', 'profile', 'score', 'inspection_priority', 'wet_area_m2', 'area_m2', 'lat', 'lon'];
     const quote = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
@@ -73,43 +80,52 @@ function ToCheck({ rows, profile }) {
   };
   return (
     <>
-      <div className="ctl" style={{ marginTop: 12 }}>
-        <input type="search" placeholder="Search site, habitat, tile" aria-label="Search parcels" value={q} onChange={(e) => setQ(e.target.value)} />
-        <select aria-label="Sort parcels" value={sort} onChange={(e) => setSort(e.target.value)}>
-          <option value="score">Highest score</option><option value="priority">Inspection priority</option>
-          <option value="wet">Largest wet area</option><option value="habitat">Habitat A–Z</option>
-        </select>
+      <div className="my-2.5 grid grid-cols-2 gap-2.5">
+        <Input type="search" placeholder="Search site or habitat" aria-label="Search parcels" value={q} onChange={(e) => setQ(e.target.value)} />
+        <Select aria-label="Sort parcels" value={sort} onChange={(e) => setSort(e.target.value)}>
+          <option value="score">Highest score first</option><option value="priority">Inspection priority</option>
+          <option value="wet">Largest wet area</option><option value="habitat">Habitat A to Z</option>
+        </Select>
       </div>
-      <div className="minrow">Min score <input type="range" min="0" max="100" step="5" value={min} onChange={(e) => setMin(+e.target.value)} /><b>{min}</b></div>
-      <div className="rows">
-        {!out.length && <div className="empty">Nothing matches. Lower the minimum score or clear the search.</div>}
+      {habitats.length > 1 && (
+        <div className="mb-2.5 flex flex-wrap gap-2" role="group" aria-label="Filter by habitat">
+          {habitats.map((h) => <button key={h} type="button" aria-pressed={habs.includes(h)} className={cx('min-h-[38px] rounded-full border transition-colors duration-150 border-line px-3.5 text-sm font-medium', habs.includes(h) ? 'border-ink bg-ink text-surface' : 'bg-surface text-ink hover:bg-wash')} onClick={() => setHabs(habs.includes(h) ? habs.filter((x) => x !== h) : [...habs, h])}>{h}</button>)}
+        </div>
+      )}
+      <label className="mb-2 mt-0.5 flex items-center gap-2.5 text-sm text-muted">Minimum score <input type="range" className="flex-1" min="0" max="100" step="5" value={min} onChange={(e) => setMin(+e.target.value)} /><b className="font-mono">{min}</b></label>
+      <div className="max-h-[260px] overflow-auto rounded-md border border-line-soft">
+        {!out.length && <Empty>Nothing matches. Lower the minimum score or clear the filters.</Empty>}
         {out.slice(0, 200).map((r) => (
-          <button className="rowbtn" key={`${r.stem}:${r.p.id}`} onClick={() => zoomTo(r)}>
-            <span className="sc">{r.score}</span><span>{r.p.site_id || `Region ${r.p.id}`} · {r.habitat}</span><small>{fmt(r.wet)} m²</small>
+          <button type="button" className="rowbtn grid min-h-[54px] w-full items-center gap-2.5 border-b border-line-soft bg-surface px-2.5 py-1.5 text-left text-[15px] font-medium text-ink last:border-b-0 hover:bg-pine-50 grid-cols-[54px_1fr_auto]" key={`${r.stem}:${r.p.id}`} onClick={() => zoomTo(r)}>
+            <Pill score={r.score} thr={thr} />
+            <span>{r.p.site_id || `Region ${r.p.id}`}<span className="block text-[13px] text-muted">{r.habitat}</span></span>
+            <small className="font-mono text-[13px] text-muted">{fmt(r.wet)} m²</small>
           </button>
         ))}
-        {out.length > 200 && <div className="empty">Showing 200 of {out.length}. Use the CSV for the full list.</div>}
+        {out.length > 200 && <Empty>Showing 200 of {out.length}. The CSV has the full list.</Empty>}
       </div>
-      <button style={{ marginTop: 8 }} onClick={csv}>Download list (CSV)</button>
+      <Button className="mt-2.5 w-full" onClick={csv}>Download this list (CSV)</Button>
     </>
   );
 }
 
 // The backend's own combined inspection list (priority numbers or "pending").
-function Inspection({ rows }) {
+function Inspection({ rows, thr }) {
   const incl = useStore((s) => s.includeMalaria);
   const list = rows.filter((r) => r.p.inspection_priority !== null && r.p.inspection_priority !== undefined)
     .sort((a, b) => (typeof a.p.inspection_priority === 'number' ? a.p.inspection_priority : 9) - (typeof b.p.inspection_priority === 'number' ? b.p.inspection_priority : 9));
   return (
     <>
-      <p className="hint" style={{ marginTop: 12 }}>Inspection list · {incl ? 'both profiles' : 'Any larvae only'}</p>
-      <div className="rows">
-        {!list.length && <div className="empty">No qualifying regions in this batch.</div>}
+      <p className="mt-1.5 text-sm text-muted">Order to visit sites · {incl ? 'both profiles' : 'Any larvae only'}</p>
+      <div className="mt-2.5 max-h-[260px] overflow-auto rounded-md border border-line-soft">
+        {!list.length && <Empty>No parcel needs inspection in this batch.</Empty>}
         {list.map((r) => {
           const sc = r.p.scores || {};
           return (
-            <button className="rowbtn" key={`${r.stem}:${r.p.id}`} style={{ gridTemplateColumns: '1fr' }} onClick={() => zoomTo(r)}>
-              {r.p.inspection_priority === 'pending' ? 'Pending' : `Priority ${r.p.inspection_priority}`} · {r.p.site_id || `Region ${r.p.id}`} · Any {sc.any_larvae?.score ?? 'N/A'}{incl ? ` / Malaria ${sc.malaria?.score ?? 'N/A'}` : ''}
+            <button type="button" className="rowbtn grid min-h-[54px] w-full items-center gap-2.5 border-b border-line-soft bg-surface px-2.5 py-1.5 text-left text-[15px] font-medium text-ink last:border-b-0 hover:bg-pine-50 grid-cols-[54px_1fr_auto]" key={`${r.stem}:${r.p.id}`} style={{ gridTemplateColumns: '1fr auto' }} onClick={() => zoomTo(r)}>
+              <span><span className="font-semibold text-amber">{r.p.inspection_priority === 'pending' ? 'Pending' : `Priority ${r.p.inspection_priority}`}</span>
+                {' · '}{r.p.site_id || `Region ${r.p.id}`}<span className="block text-[13px] text-muted">{r.habitat}</span></span>
+              <small className="font-mono text-[13px] text-muted">Any {sc.any_larvae?.score ?? 'N/A'}{incl ? ` · Malaria ${sc.malaria?.score ?? 'N/A'}` : ''}</small>
             </button>
           );
         })}
@@ -124,22 +140,26 @@ export default function SummaryPanel() {
   if (!rows.length) return null;
   const tab = ui.summaryTab, set = (patch) => store.set({ ui: { ...ui, ...patch } });
   return (
-    <div id="sp" className="card">
-      <button className="sp-head" aria-expanded={ui.summaryOpen} onClick={() => set({ summaryOpen: !ui.summaryOpen })}>
-        <b>Risk summary</b><span>{profileLabel(profile)}</span>
+    <Card id="sp" className={cx('absolute bottom-4 right-3 z-[1000] flex max-h-[64%] w-[min(380px,calc(100%-24px))] flex-col',
+      'max-sm:bottom-[calc(76px+env(safe-area-inset-bottom,0px))] max-sm:left-3 max-sm:right-3 max-sm:max-h-[52%] max-sm:w-auto', !ui.barCollapsed && 'max-sm:hidden')}>
+      <button type="button" className="sp-head flex min-h-[52px] w-full items-center justify-between rounded-card border-0 bg-surface px-4 font-normal text-ink hover:bg-wash"
+        aria-expanded={ui.summaryOpen} onClick={() => set({ summaryOpen: !ui.summaryOpen })}>
+        <b className="text-[17px]">Results</b><span className="text-[13px] font-semibold text-muted">{ui.summaryOpen ? 'Hide ▾' : 'Show ▴'}</span>
       </button>
       {ui.summaryOpen && (
-        <div className="sp-body">
-          <div className="tabs" role="tablist">
-            {[['overview', 'Overview'], ['check', 'To check'], ['inspection', 'Inspection']].map(([k, label]) => (
-              <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => set({ summaryTab: k })}>{label}</button>
+        <div className="overflow-auto border-t border-line-soft px-4 pb-4">
+          <div className="mt-3"><Seg label="Scoring profile" value={profile} onChange={setProfile} options={PROFILES} /></div>
+          <div className="mb-1 mt-3 grid grid-cols-3 gap-1.5" role="tablist">
+            {[['overview', 'Overview'], ['check', 'To check'], ['inspection', 'Visit order']].map(([k, label]) => (
+              <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => set({ summaryTab: k })}
+                className="min-h-[44px] rounded-md border transition-colors duration-150 border-line bg-surface px-1 text-sm font-medium text-muted hover:bg-wash aria-selected:border-ink aria-selected:bg-ink aria-selected:text-surface">{label}</button>
             ))}
           </div>
           {tab === 'overview' && <Overview rows={rows} thr={thr} />}
-          {tab === 'check' && <ToCheck rows={rows} profile={profile} />}
-          {tab === 'inspection' && <Inspection rows={rows} />}
+          {tab === 'check' && <ToCheck rows={rows} profile={profile} thr={thr} />}
+          {tab === 'inspection' && <Inspection rows={rows} thr={thr} />}
         </div>
       )}
-    </div>
+    </Card>
   );
 }

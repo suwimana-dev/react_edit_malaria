@@ -10,12 +10,17 @@
   },
   "dependencies": {
     "@geoman-io/leaflet-geoman-free": "^2.17.0",
+    "clsx": "^2.1.1",
     "leaflet": "^1.9.4",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "tailwind-merge": "^2.6.1"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.6.2",
+    "postcss": "^8.5.32",
+    "tailwindcss": "^3.4.17",
     "vite": "^5.4.11"
   }
 }

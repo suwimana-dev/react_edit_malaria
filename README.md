@@ -53,3 +53,22 @@ water_pct > 30 % warning, date rules (assessment date on or after flight date).
 Defaults load, date validation, upload + run + overlay, re-score, summary panel, popup from list and from a real map click,
 reclassify, observation (popup stays open), field visit save, edit-mode select / merge / delete / reclassify / reshape (Geoman),
 class tick-boxes, profile switch, weight-version save and load, inspection tab. Not tested against the real backend or real GeoTIFFs.
+
+## Field-worker restyle (v2 UI)
+
+- Light, high-contrast pine-green theme; 46 px tap targets; phone layout uses a bottom sheet that collapses after a run.
+- Control bar is a 4-step flow: Add drone images, Set the dates, Run (with a plain reason when disabled), Review and correct.
+- Parcel popup: two score chips (flagged / below threshold), collapsible "Why this score", "Correct what the model got wrong", and "Record a field visit" with inline save errors.
+- Results panel: profile switch, Overview / To check / Visit order tabs, habitat filter chips, CSV download.
+- Risk settings: grouped sections, "edited (was N)" markers, reset to defaults, "Changes not applied yet" badge, weight versions.
+- API contract and element ids used by the tests are unchanged.
+
+## Styling: Tailwind CSS
+
+The UI is styled with Tailwind CSS 3.4 utility classes directly in the JSX.
+
+- `tailwind.config.js` maps theme colours (`pine`, `amber`, `danger`, `ok`, `ink`, `muted`, `surface`, `wash`, `line`) to the CSS variables in `src/styles.css`, so the light and dark token sets still work.
+- `src/ui.jsx` holds the shared pieces (`Button` variants, `Card`, `Input`, `Select`, `Lbl`, `Summary`) and `cx()` (`clsx` + `tailwind-merge`) for conditional classes.
+- `src/styles.css` now only has the Tailwind directives, the design tokens, base rules and Leaflet's own markup.
+- Phone layout uses the `max-sm:` variant (under 640 px).
+- After pulling: `npm install` (adds tailwindcss, postcss, autoprefixer, clsx, tailwind-merge).

@@ -28,7 +28,7 @@ export const store = createStore({
 
   classNames: {}, classColors: {}, legendItems: [], visibleClasses: new Set(),
   profileDefaults: {}, habitatLabels: {}, profileWeights: null, activeProfile: 'any_larvae', vegMode: 'edge_proxy',
-  weightVersions: [], storageError: null,
+  weightVersions: [], storageError: null, appliedKey: '', cursor: '',
 
   flightDate: '', assessmentDate: todayStr(), observer: '', includeMalaria: false, sensitivity: 0,
   stackFiles: [], rgbFiles: [],
@@ -37,6 +37,7 @@ export const store = createStore({
 
   editMode: false, reshapeOn: false, selected: [], popup: null,
   ui: { barCollapsed: false, settingsOpen: false, summaryOpen: true, summaryTab: 'overview', legendCollapsed: false },
+  statusSeq: 0,
 });
 
 export function useStore(selector) {
